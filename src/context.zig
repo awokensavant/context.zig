@@ -433,3 +433,27 @@ test "Context: wait timeout" {
     try testing.expectError(ContextError.DeadlineExceeded, result);
     try testing.expect(elapsed >= 10 * time.ns_per_ms);
 }
+
+test "Context: nested cancellation" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var parent = Context.background(allocator);
+    defer parent.deinit();
+
+    var child = try Context.withParent(&parent, null);
+    defer {
+        child.deinit();
+        allocator.destroy(child);
+    }
+
+    try testing.expect(!child.isCancelled());
+    try testing.expect(!child.isDone());
+
+    // Cancel parent
+    try parent.cancel("parent cancelled");
+
+    try testing.expect(child.isCancelled());
+    try testing.expect(child.isDone());
+}
